@@ -1,0 +1,21 @@
+<div *ngIf="!roundData">
+  No game started yet
+  <button *ngIf="currentUser?.isHost" (click)="startGame()">Start game</button>
+</div>
+<div *ngIf="roundData" class="game-container">
+  <div *ngIf="videoUrl" [ngClass]="!showBigMap ? 'main' : 'mini'">
+    <div class="youtube-wrapper">
+    <div class="frame-container">
+      <iframe [src]='videoUrl' frameborder="0" [height]="300"
+              [width]="540"></iframe>
+    </div>
+    </div>
+  </div>
+  <button>Submit Guess</button>
+</div>
+<div [ngClass]="showBigMap ? 'main' : 'mini'">
+  <div id="map"></div>
+  <button class="swap" (click)="swap()">
+    ⤢
+  </button>
+</div>

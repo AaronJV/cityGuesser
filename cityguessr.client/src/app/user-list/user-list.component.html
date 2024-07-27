@@ -1,0 +1,15 @@
+<div *ngIf="currentUser">
+  <div>Players</div>
+  <table>
+    <tbody>
+    <tr *ngFor="let user of users">
+      <td [class.current]="user.id == currentUser.id">
+        {{user.name}}<span *ngIf="user.isHost">👻-g</span>
+      </td>
+      <td>
+        {{user.points}}
+      </td>
+    </tr>
+      </tbody>
+  </table>
+</div>
