@@ -2,20 +2,35 @@
   No game started yet
   <button *ngIf="currentUser?.isHost" (click)="startGame()">Start game</button>
 </div>
-<div *ngIf="roundData" class="game-container">
-  <div *ngIf="videoUrl" [ngClass]="!showBigMap ? 'main' : 'mini'">
+<div class="game-container" [style.display]="roundData ? 'block' : 'none'">
+  <div [ngClass]="!showBigMap ? 'main' : 'mini'">
     <div class="youtube-wrapper">
-    <div class="frame-container">
-      <iframe [src]='videoUrl' frameborder="0" [height]="300"
-              [width]="540"></iframe>
-    </div>
+      <button class="swap" (click)="swap()" [style.display]="showBigMap ? 'block' : 'none'">
+        ⤢
+      </button>
+      <div class="controls_container" [style.display]="!showBigMap ? 'block' : 'none'">
+        <div class="controls">
+          <div>
+            🐢
+            <button class="controls_btn" (click)="seekBack(true)" title="Restart Video">⇤</button>
+            <button class="controls_btn" (click)="seekBack(false)" title="Go Back 5s">↺</button>
+            🐇
+          </div>
+          <input title="speed slider" type="range" min="0.2" max="2" step="0.2" [(ngModel)]="playSpeed" (change)="updateSpeed()" />
+        </div>
+      </div>
+      <div class="frame-container">
+        <div id="video"></div>
+        <!--<iframe [src]='videoUrl' frameborder="0" [height]="300"
+            [width]="540"></iframe>-->
+      </div>
     </div>
   </div>
-  <button>Submit Guess</button>
-</div>
-<div [ngClass]="showBigMap ? 'main' : 'mini'">
-  <div id="map"></div>
-  <button class="swap" (click)="swap()">
-    ⤢
-  </button>
+  <div [ngClass]="showBigMap ? 'main' : 'mini'">
+    <div #map id="map"></div>
+    <button class="swap" (click)="swap()" [style.display]="!showBigMap ? 'block' : 'none'">
+      ⤢
+    </button>
+    <button>Submit Guess</button>
+  </div>
 </div>

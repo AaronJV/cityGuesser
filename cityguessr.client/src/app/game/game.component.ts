@@ -1,8 +1,11 @@
-import { Component, OnInit } from "@angular/core";
+/// <reference types="youtube" />
+
+import { Component, ElementRef, OnInit, ViewChild } from "@angular/core";
 import { GameService, IRoundState, IUser } from "../game.service";
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import * as Leaflet from 'leaflet';
 import { fromEvent, debounceTime } from "rxjs";
+
 
 let marker: Leaflet.Marker | undefined = undefined;
 
@@ -16,6 +19,9 @@ export class GameComponent implements OnInit {
   public currentUser?: IUser;
   public videoUrl?: SafeResourceUrl;
   public map!: Leaflet.Map;
+  @ViewChild('map') public mapElem?: ElementRef;
+  private _player?: YT.Player;
+  public playSpeed = 1;
 
   public showBigMap: boolean = false;
 
@@ -34,12 +40,13 @@ export class GameComponent implements OnInit {
         if (!this.map) {
           this.initMap();
         }
-        const params = `?autoplay=1&fs=0&mute=1&loop=1&color=white&controls=0&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&start=${s.videoStart}`;
+        if (!this._player) {
+          this.initYoutube(s.video, s.videoStart);
+        } else {
+          this._player.loadVideoById(s.video, s.videoStart);
+        }
 
-        const url = `https://www.youtube.com/embed/${s.video}${params}`;
-        this.map.fitWorld();
-
-        this.videoUrl = this._sanitizer.bypassSecurityTrustResourceUrl(url);
+        this.map?.fitWorld();
       } else {
         this.videoUrl = undefined;
       }
@@ -47,7 +54,63 @@ export class GameComponent implements OnInit {
     this._game.currentUser$.subscribe(u => this.currentUser = u);
   }
 
+  public updateSpeed() {
+    console.log(this.playSpeed)
+    this._player?.setPlaybackRate(this.playSpeed);
+  }
+
+
+  public seekBack(gotoStart: boolean) {
+    let time = this.roundData?.videoStart ?? 0;
+
+    if (!gotoStart) {
+      const current = this._player?.getCurrentTime() ?? 0;
+      time = Math.max(time, current - 5);
+    }
+
+    this._player?.seekTo(time, true);
+  }
+
+  private initYoutube(videoId: string, start: number) {
+    const tag = document.createElement('script');
+
+    tag.src = "https://www.youtube.com/iframe_api";
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode!.insertBefore(tag, firstScriptTag);
+
+    (<any>window).onYouTubeIframeAPIReady = () => {
+      this._player = new YT.Player('video', {
+        height: "100%",
+        width: "100%",
+        videoId,
+        events: {
+          'onReady': console.dir,
+          'onStateChange': (e: any) => {
+            console.log('state change');
+            console.dir(e)
+          }
+        },
+        playerVars:
+        {
+          autoplay: 1,
+          fs: 0,
+          mute: 1,
+          loop: 1,
+          controls: 0,
+          modestbranding: 1,
+          playsinline: 1,
+          rel: 0,
+          enablejsapi: 1,
+          start,
+        }
+      });
+    }
+  }
+
   public initMap() {
+    if (!this.mapElem) {
+      return;
+    }
     this.map = Leaflet.map('map');
     this.map.fitWorld();
     Leaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -67,6 +130,11 @@ export class GameComponent implements OnInit {
         this._doubleClicks.pop();
       }, 250)
     });
+    var resize = new ResizeObserver(() => {
+      this.map.invalidateSize()
+      this.map.fitWorld();
+    });
+    resize.observe(this.mapElem?.nativeElement)
   }
 
   public startGame() {
@@ -85,6 +153,7 @@ export class GameComponent implements OnInit {
 
   public swap() {
     this.showBigMap = !this.showBigMap;
+    this.map.invalidateSize();
   }
 }
 

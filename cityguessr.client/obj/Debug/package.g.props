@@ -20,7 +20,6 @@
     <PackageJsonDependenciesAngularPlatformBrowser Condition="$(PackageJsonDependenciesAngularPlatformBrowser) == ''">^15.1.0</PackageJsonDependenciesAngularPlatformBrowser>
     <PackageJsonDependenciesAngularPlatformBrowserDynamic Condition="$(PackageJsonDependenciesAngularPlatformBrowserDynamic) == ''">^15.1.0</PackageJsonDependenciesAngularPlatformBrowserDynamic>
     <PackageJsonDependenciesAngularRouter Condition="$(PackageJsonDependenciesAngularRouter) == ''">^15.1.0</PackageJsonDependenciesAngularRouter>
-    <PackageJsonDependenciesAngularYoutubePlayer Condition="$(PackageJsonDependenciesAngularYoutubePlayer) == ''">^15.2.9</PackageJsonDependenciesAngularYoutubePlayer>
     <PackageJsonDependenciesTypesLeaflet Condition="$(PackageJsonDependenciesTypesLeaflet) == ''">^1.9.12</PackageJsonDependenciesTypesLeaflet>
     <PackageJsonDependenciesJestEditorSupport Condition="$(PackageJsonDependenciesJestEditorSupport) == ''">*</PackageJsonDependenciesJestEditorSupport>
     <PackageJsonDependenciesLeaflet Condition="$(PackageJsonDependenciesLeaflet) == ''">^1.9.4</PackageJsonDependenciesLeaflet>
@@ -32,6 +31,7 @@
     <PackageJsonDevdependenciesAngularCli Condition="$(PackageJsonDevdependenciesAngularCli) == ''">~15.1.1</PackageJsonDevdependenciesAngularCli>
     <PackageJsonDevdependenciesAngularCompilerCli Condition="$(PackageJsonDevdependenciesAngularCompilerCli) == ''">^15.1.0</PackageJsonDevdependenciesAngularCompilerCli>
     <PackageJsonDevdependenciesTypesJasmine Condition="$(PackageJsonDevdependenciesTypesJasmine) == ''">~4.3.0</PackageJsonDevdependenciesTypesJasmine>
+    <PackageJsonDevdependenciesTypesYoutube Condition="$(PackageJsonDevdependenciesTypesYoutube) == ''">^0.0.50</PackageJsonDevdependenciesTypesYoutube>
     <PackageJsonDevdependenciesJasmineCore Condition="$(PackageJsonDevdependenciesJasmineCore) == ''">~4.5.0</PackageJsonDevdependenciesJasmineCore>
     <PackageJsonDevdependenciesKarma Condition="$(PackageJsonDevdependenciesKarma) == ''">~6.4.0</PackageJsonDevdependenciesKarma>
     <PackageJsonDevdependenciesKarmaChromeLauncher Condition="$(PackageJsonDevdependenciesKarmaChromeLauncher) == ''">~3.1.0</PackageJsonDevdependenciesKarmaChromeLauncher>
