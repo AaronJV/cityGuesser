@@ -1,21 +1,21 @@
-using CityGuessr.Server;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace CityGuesser.Server
+namespace CityGuessr.Server
 {
     public class GameService
     {
-        private static Random Random = new Random();
+        private static readonly Random Random = new();
         private readonly List<LocationData> _gameData;
         private readonly Dictionary<Guid, User> _users = [];
         private readonly ILogger<GameService> _logger;
-        private readonly object _lock = new object();
+        private readonly object _lock = new();
+        private readonly Dictionary<User, Guess> _guesses = new();
 
-        private bool _gameRunning = false;
-        private LocationData _currentLocation;
+        private bool _gameRunning;
+        private LocationData? _currentLocation;
 
         public GameService(ILogger<GameService> logger)
         {
@@ -25,42 +25,31 @@ namespace CityGuesser.Server
             _gameData = data!;
         }
 
-        public async Task AddUser(WebSocket webSocket)
+        public async Task HandleConnection(WebSocket webSocket)
         {
-            var user = new User()
-            {
-                Id = Guid.NewGuid(),
-                Name = $"Player {_users.Count + 1}",
-                Socket = webSocket,
-                IsHost = !_users.Any()
-            };
-
-            try
-            {
-                _users.Add(user.Id, user);
-                await ConfirmAdd(user, webSocket);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError("Failed to add user. {}", ex);
-            }
+            var user = await AddUser(webSocket);
 
             try
             {
                 while (webSocket.State == WebSocketState.Open)
                 {
                     var buffer = new byte[1024];
-                    var response = await webSocket.ReceiveAsync(buffer, CancellationToken.None);
+                    await webSocket.ReceiveAsync(buffer, CancellationToken.None);
                     var messageString = Encoding.UTF8.GetString(buffer).TrimEnd('\0');
 
                     if (!string.IsNullOrEmpty(messageString))
                     {
-                        var message = JsonSerializer.Deserialize<IMessage>(messageString, new JsonSerializerOptions() { Converters = { new MessageConvertor() } });
-                        await HandleMessage(message!);
+                        var message = JsonSerializer.Deserialize<IMessage>(messageString,
+                            new JsonSerializerOptions()
+                            {
+                                Converters = { new MessageConvertor() },
+                                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                            });
+                        await HandleMessage(message!, user);
                     }
                     else
                     {
-                        _logger.LogDebug("Recieved empty message");
+                        _logger.LogDebug("Received empty message");
                     }
                 }
             }
@@ -68,8 +57,31 @@ namespace CityGuesser.Server
             {
                 _logger.LogError("Failed to handle response. {}", ex);
             }
+
+            await RemoveUser(user);
+        }
+
+        private async Task<User> AddUser(WebSocket webSocket)
+        {
+            var user = new User(webSocket, $"Player {_users.Count + 1}", _users.Count == 0);
+
+            try
+            {
+                _users.Add(user.Id, user);
+                await ConfirmAdd(user);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("Failed to add user. {}", ex);
+            }
+
+            return user;
+        }
+
+        private async Task RemoveUser(User user)
+        {
             _users.Remove(user.Id);
-            await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, CancellationToken.None);
+            await user.Socket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, CancellationToken.None);
             if (user.IsHost && _users.Any())
             {
                 var newHost = _users.Values.First();
@@ -91,69 +103,122 @@ namespace CityGuesser.Server
             await Send(updateMessage, _users.Values);
         }
 
-        private Task HandleMessage(IMessage message)
+        private async Task HandleMessage(IMessage message, User user)
         {
-            // no-op
-            if (message is Message<StartGame>)
+            Func<Task> handler = message switch
             {
-                Task.Run(RunGame);
-            }
+                Message<StartGame> => () =>
+                {
+                    Task.Run(RunGame);
+                    return Task.CompletedTask;
+                },
+                Message<Guess> => async () => await RecordGuess((Message<Guess>)message, user),
+                _ => () =>
+                {
+                    _logger.LogWarning("Unhandled message: {}", message.GetType());
+                    return Task.CompletedTask;
+                }
+            };
 
-            return Task.CompletedTask;
+            await handler();
+        }
+
+        private async Task RecordGuess(Message<Guess> message, User user)
+        {
+            var guess = message.Data;
+            if (!_guesses.TryAdd(user, guess) && !_guesses[user].IsFinal)
+            {
+                _guesses[user] = guess;
+
+                if (guess.IsFinal)
+                {
+                    var distance = CalculateDistance(
+                        _currentLocation!.Latitude,
+                        _currentLocation.Longitude,
+                        guess.Latitude,
+                        guess.Longitude);
+
+                    var msg = (Message<GuessResult>)new GuessResult
+                    {
+                        Distance = distance,
+                        TargetLatitude = _currentLocation!.Latitude,
+                        TargetLongitude = _currentLocation!.Longitude,
+                    };
+
+                    await Send(msg, [user]);
+                }
+            }
+        }
+
+        private static double CalculateDistance(double lat1, double long1, double lat2, double long2)
+        {
+            const double earthRadius = 6371; // km
+            const double radiansPerDegree = Math.PI / 180;
+
+            var dLat = (lat2 - lat1) * radiansPerDegree;
+            var dLon = (long2 - long1) * radiansPerDegree;
+            var a =
+                Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(lat1 * radiansPerDegree) * Math.Cos(lat2 * radiansPerDegree) *
+                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+            var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+            return earthRadius * c;
         }
 
         private async Task RunGame()
         {
-            lock(_lock)
+            lock (_lock)
             {
                 if (_gameRunning)
                 {
                     return;
                 }
+
                 _gameRunning = true;
             }
 
             await Send((Message<GameStarting>)new GameStarting(), _users.Values);
 
-            Thread.Sleep(3000);
+            Thread.Sleep(200);
 
             const int roundLength = 120;
 
             for (var i = 0; i < 3; i++)
             {
                 _currentLocation = _gameData[Random.Next(_gameData.Count)];
+                _guesses.Clear();
 
                 await Send(new Message<RoundStart>()
-                {
-                    Data = new RoundStart()
                     {
-                        RoundNumber = i + 1,
-                        RoundLength = roundLength,
-                        VideoId = _currentLocation.VideoId,
-                        StartTime = _currentLocation.StartTime
-                    }
-                },
-                _users.Values);
+                        Data = new RoundStart()
+                        {
+                            RoundNumber = i + 1,
+                            RoundLength = roundLength,
+                            VideoId = _currentLocation.VideoId,
+                            StartTime = _currentLocation.StartTime
+                        }
+                    },
+                    _users.Values);
 
                 Thread.Sleep(roundLength * 1000);
                 await Send(new Message<RoundEnd>()
-                {
-                    Data = new RoundEnd()
                     {
-                        Latitude = _currentLocation.Latitude,
-                        Longitude = _currentLocation.Longitude,
-                    }
-                },
-                _users.Values);
+                        Data = new RoundEnd()
+                        {
+                            Latitude = _currentLocation.Latitude,
+                            Longitude = _currentLocation.Longitude,
+                        }
+                    },
+                    _users.Values);
             }
 
-            lock(_lock)
+            lock (_lock)
             {
                 _gameRunning = false;
             }
         }
 
-        private async Task ConfirmAdd(User user, WebSocket webSocket)
+        private async Task ConfirmAdd(User user)
         {
             var message = new Message<ConfirmUsername>
             {
@@ -174,7 +239,7 @@ namespace CityGuesser.Server
 
             Message<GameRunning> joinMsg = new GameRunning()
             {
-                VideoId = _currentLocation.VideoId,
+                VideoId = _currentLocation!.VideoId,
                 StartTime = _currentLocation!.StartTime,
             };
 
@@ -193,31 +258,27 @@ namespace CityGuesser.Server
         }
     }
 
-    public class User
+    public class User(WebSocket socket, string name, bool isHost)
     {
-        internal WebSocket Socket { get; init; }
+        internal WebSocket Socket { get; init; } = socket;
 
-        public Guid Id { get; init; }
+        public Guid Id { get; init; } = Guid.NewGuid();
 
-        public string Name { get; init; }
+        public string Name { get; init; } = name;
 
         public int Points { get; set; }
 
-        public bool IsHost { get; set; }
+        public bool IsHost { get; set; } = isHost;
     }
 
     public class LocationData
     {
-        [JsonPropertyName("lat")]
-        public double Latitude { get; set; }
+        [JsonPropertyName("lat")] public double Latitude { get; set; }
 
-        [JsonPropertyName("long")]
-        public double Longitude { get; set; }
+        [JsonPropertyName("long")] public double Longitude { get; set; }
 
-        [JsonPropertyName("vid")]
-        public required string VideoId { get; set; }
+        [JsonPropertyName("vid")] public required string VideoId { get; set; }
 
-        [JsonPropertyName("start")]
-        public int StartTime { get; set; }
+        [JsonPropertyName("start")] public int StartTime { get; set; }
     }
 }

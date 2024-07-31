@@ -1,5 +1,4 @@
-﻿using CityGuesser.Server;
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace CityGuessr.Server
@@ -79,6 +78,23 @@ namespace CityGuessr.Server
         public double Latitude { get; set; }
     }
 
+    public class Guess
+    {
+        public double Longitude { get; set; }
+
+        public double Latitude { get; set; }
+
+        public bool IsFinal { get; set; }   
+    }
+
+    public class GuessResult
+    {
+        public double Distance { get; set; }
+        public double TargetLatitude { get; set; }
+        public double TargetLongitude { get; set; }
+    }
+
+
     public class MessageConvertor : JsonConverter<IMessage>
     {
         private static readonly JsonEncodedText TypeProperty = JsonEncodedText.Encode("messageType");
@@ -114,17 +130,21 @@ namespace CityGuessr.Server
 
             if (type == typeof(StartGame).Name)
             {
-                return DeserializeData<StartGame>(dataElement);
+                return DeserializeData<StartGame>(dataElement, options);
+            }
+            if (type == typeof(Guess).Name)
+            {
+                return DeserializeData<Guess>(dataElement, options);
             }
 
             throw new JsonException("Unsupported message type");
         }
 
-        private static Message<T> DeserializeData<T>(JsonElement element)
+        private static Message<T> DeserializeData<T>(JsonElement element, JsonSerializerOptions options)
         {
             return new Message<T>()
             { 
-                Data = element.Deserialize<T>(),
+                Data = element.Deserialize<T>(options),
             };
         }
 

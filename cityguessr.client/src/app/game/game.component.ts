@@ -7,8 +7,6 @@ import * as Leaflet from 'leaflet';
 import { fromEvent, debounceTime } from "rxjs";
 
 
-let marker: Leaflet.Marker | undefined = undefined;
-
 @Component({
   selector: 'app-game',
   templateUrl: './game.component.html',
@@ -22,20 +20,40 @@ export class GameComponent implements OnInit {
   @ViewChild('map') public mapElem?: ElementRef;
   private _player?: YT.Player;
   public playSpeed = 1;
+  public marker?: Leaflet.Marker;
+  private _resultMarker?: Leaflet.Marker;
+
 
   public showBigMap: boolean = false;
 
   private _doubleClicks: boolean[] = [];
 
-  constructor(private _game: GameService, private _sanitizer: DomSanitizer) { }
+  constructor(public game: GameService) { }
 
   public ngOnInit() {
-    this._game.roundState$.subscribe(s => {
+    this.game.roundState$.subscribe(s => {
       if (typeof (s) === 'boolean') {
         this.initMap();
         return;
       }
       this.roundData = s;
+      if (this.roundData?.video !== s.video && this._resultMarker)
+      {
+        this._resultMarker.remove();
+        delete this._resultMarker;
+      }
+      if (s.result)
+      {
+        this._resultMarker = Leaflet.marker([s.result.targetLatitude, s.result.targetLongitude]);
+        this._resultMarker.addTo(this.map);
+
+        Leaflet.polyline(
+          [this._resultMarker.getLatLng(), this.marker!.getLatLng()], {
+          weight: 10,
+          dashArray: '10, 10',
+          color: 'black'
+        }).addTo(this.map);
+      }
       if (!s.isOver) {
         if (!this.map) {
           this.initMap();
@@ -51,7 +69,7 @@ export class GameComponent implements OnInit {
         this.videoUrl = undefined;
       }
     });
-    this._game.currentUser$.subscribe(u => this.currentUser = u);
+    this.game.currentUser$.subscribe(u => this.currentUser = u);
   }
 
   public updateSpeed() {
@@ -138,17 +156,33 @@ export class GameComponent implements OnInit {
   }
 
   public startGame() {
-    this._game.startGame();
+    this.game.startGame();
   }
 
   public onMapClick(e: Leaflet.LeafletMouseEvent) {
-    if (marker) {
-      marker.setLatLng(e.latlng);
+    if (this._resultMarker)
+    {
+      return;
+    }
+
+    if (this.marker) {
+      this.marker.setLatLng(e.latlng);
     }
     else {
-      marker = Leaflet.marker(e.latlng);
-      marker.addTo(this.map);
+      this.marker = Leaflet.marker(e.latlng);
+      this.marker.addTo(this.map);
     }
+    this.game.sendGuess(e.latlng.lat, e.latlng.lng, false);
+  }
+
+  public finalizeGuess() {
+    if (!this.marker) {
+      return
+    }
+
+    const latLng = this.marker.getLatLng();
+
+    this.game.sendGuess(latLng.lat, latLng.lng, true);
   }
 
   public swap() {

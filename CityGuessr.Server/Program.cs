@@ -1,4 +1,4 @@
-using CityGuesser.Server;
+using CityGuessr.Server;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,7 +37,7 @@ app.Use(async (context, next) =>
     {
         var ws = await context.WebSockets.AcceptWebSocketAsync();
         var gameService = app.Services.GetService(typeof(GameService)) as GameService;
-        await gameService?.AddUser(ws);
+        await gameService?.HandleConnection(ws)!;
     }
     else
     {

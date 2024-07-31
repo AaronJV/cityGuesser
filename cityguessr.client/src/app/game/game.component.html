@@ -33,4 +33,23 @@
     </button>
     <button>Submit Guess</button>
   </div>
+  <div class="userList_container">
+    <div class="userList">
+      <table>
+        <thead>
+          <tr>
+            <td>Player</td>
+            <td>Points</td>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let user of (game.users$ | async)">
+            <td>{{user.name}}</td>
+            <td>{{user.points}}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <button class="finalize_guess" *ngIf="marker && !roundData?.result" (click)="finalizeGuess()">Finalize Guess</button>
 </div>

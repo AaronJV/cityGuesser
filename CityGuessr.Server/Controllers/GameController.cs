@@ -1,5 +1,4 @@
-﻿using CityGuesser.Server;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using System.Net.WebSockets;
 
 namespace CityGuessr.Server.Controllers

@@ -22,6 +22,11 @@ export interface IRoundState {
   number: number;
   latitude?: number;
   longitude?: number;
+  result?: {
+    distance: number;
+    targetLatitude: number;
+    targetLongitude: number;
+  }
 }
 
 @Injectable({ providedIn: 'root' })
@@ -61,6 +66,13 @@ export class GameService {
         length: 0,
       }
       this._roundState.next(this._currentRound);
+    },
+    'GuessResult': (m) => {
+      this._currentRound = {
+        ...this._currentRound!,
+        result: m.data,
+      }
+      this._roundState.next(this._currentRound);
     }
   }
 
@@ -83,6 +95,10 @@ export class GameService {
 
   public startGame() {
     this._socket.sendMessage({ messageType: 'StartGame', data: {} })
+  }
+
+  public sendGuess(lat: number, long: number, isFinal: boolean) {
+    this._socket.sendMessage({ messageType: 'Guess', data: { latitude: lat, longitude: long, isFinal } });
   }
 
   private _users = new Subject<IUser[]>();
