@@ -3,6 +3,7 @@
   <button *ngIf="currentUser?.isHost" (click)="startGame()">Start game</button>
 </div>
 <div class="game-container" [style.display]="roundData ? 'block' : 'none'">
+  <app-circular-progress [size]="50" [progress]="remainingTime" [max]="roundData?.length ?? 0"></app-circular-progress>
   <div [ngClass]="!showBigMap ? 'main' : 'mini'">
     <div class="youtube-wrapper">
       <button class="swap" (click)="swap()" [style.display]="showBigMap ? 'block' : 'none'">

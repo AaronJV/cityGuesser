@@ -1,5 +1,4 @@
-import { HttpClient } from '@angular/common/http';
-import { Component, OnInit } from '@angular/core';
+import { Component } from '@angular/core';
 import { GameService, IUser } from './game.service';
 
 @Component({
@@ -7,12 +6,8 @@ import { GameService, IUser } from './game.service';
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.css'],
 })
-export class AppComponent implements OnInit {
+export class AppComponent {
   public currentUser?: IUser;
 
   constructor(private _game: GameService) { }
-
-  ngOnInit() {
-    this._game.connect();
-  }
 }

@@ -7,49 +7,47 @@ namespace CityGuessr.Server.Controllers
     [ApiController]
     public class GameController : ControllerBase
     {
-        [HttpGet]
-        public async Task Main()
+        private readonly RoomService _roomService;
+
+        public GameController(RoomService roomService)
         {
-            Ok("test");
+            _roomService = roomService;
+        }
+
+        [HttpPost("{roomId}")]
+        public async Task<ActionResult> CreateRoom(string roomId)
+        {
+            try
+            {
+                return (await _roomService.CreateRoom(roomId).ConfigureAwait(false))
+                    .Map<ActionResult>(Created, Conflict);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                return StatusCode(500);
+            }
         }
 
         [ApiExplorerSettings(IgnoreApi = true)]
         [Route("{room}")]
-        public async Task Get(string room)
+        public async Task Get(
+            string room,
+            [FromQuery]
+            string username,
+            [FromQuery]
+            Guid userId)
         {
-            if (HttpContext.WebSockets.IsWebSocketRequest && !string.IsNullOrWhiteSpace(room))
+            if (HttpContext.WebSockets.IsWebSocketRequest)
             {
-                using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();
-                await Echo(webSocket);
+                var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();
+                
+                await _roomService.JoinRoom(room, webSocket, username, userId);
             }
             else
             {
                 HttpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
             }
-        }
-
-        private static async Task Echo(WebSocket webSocket)
-        {
-            var buffer = new byte[1024 * 4];
-            var receiveResult = await webSocket.ReceiveAsync(
-                new ArraySegment<byte>(buffer), CancellationToken.None);
-
-            while (!receiveResult.CloseStatus.HasValue)
-            {
-                await webSocket.SendAsync(
-                    new ArraySegment<byte>(buffer, 0, receiveResult.Count),
-                    receiveResult.MessageType,
-                    receiveResult.EndOfMessage,
-                    CancellationToken.None);
-
-                receiveResult = await webSocket.ReceiveAsync(
-                    new ArraySegment<byte>(buffer), CancellationToken.None);
-            }
-
-            await webSocket.CloseAsync(
-                receiveResult.CloseStatus.Value,
-                receiveResult.CloseStatusDescription,
-                CancellationToken.None);
         }
     }
 }

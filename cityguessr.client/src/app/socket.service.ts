@@ -21,6 +21,11 @@ export default class SocketService {
     });
   }
 
+  public get connected() {
+    return this._socket !== undefined;
+  }
+
+
   public sendMessage(message: ISocketMessage) {
     if (!this._socket || this._socket.readyState != WebSocket.OPEN) {
       console.error('No open connection');

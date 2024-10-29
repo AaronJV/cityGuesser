@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -13,6 +14,11 @@ namespace CityGuessr.Server
         private readonly ILogger<GameService> _logger;
         private readonly object _lock = new();
         private readonly Dictionary<User, Guess> _guesses = new();
+        private readonly ManualResetEventSlim _roundOver = new (false);
+        private readonly ManualResetEventSlim _startNextRound = new (false);
+        private readonly Stopwatch _stopwatch = new ();
+
+        const int RoundLength = 120;
 
         private bool _gameRunning;
         private LocationData? _currentLocation;
@@ -63,7 +69,7 @@ namespace CityGuessr.Server
 
         private async Task<User> AddUser(WebSocket webSocket)
         {
-            var user = new User(webSocket, $"Player {_users.Count + 1}", _users.Count == 0);
+            var user = new User(webSocket, NameGenerator.GenerateName(), _users.Count == 0);
 
             try
             {
@@ -81,8 +87,19 @@ namespace CityGuessr.Server
         private async Task RemoveUser(User user)
         {
             _users.Remove(user.Id);
-            await user.Socket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, CancellationToken.None);
-            if (user.IsHost && _users.Any())
+            try
+            {
+                await user.Socket.CloseAsync(
+                    WebSocketCloseStatus.NormalClosure,
+                    string.Empty,
+                    CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("Failed to close socket for user user. {}", ex);
+            }
+
+            if (user.IsHost && _users.Count != 0)
             {
                 var newHost = _users.Values.First();
                 newHost.IsHost = true;
@@ -137,20 +154,38 @@ namespace CityGuessr.Server
                         _currentLocation.Longitude,
                         guess.Latitude,
                         guess.Longitude);
+                    
+                    var points = (int)Math.Round(5000 * Math.Exp(-1 * distance / 1000.0));
 
-                    var msg = (Message<GuessResult>)new GuessResult
+                    Message<GuessResult> msg = new GuessResult
                     {
                         Distance = distance,
                         TargetLatitude = _currentLocation!.Latitude,
                         TargetLongitude = _currentLocation!.Longitude,
+                        Points = points,
                     };
 
+                    user.Points += points;
+
                     await Send(msg, [user]);
+
+                    Message<BroadcastResult> broadcast = new BroadcastResult()
+                    {
+                        User = user,
+                        Distance = distance,
+                    };
+
+                    await Send(broadcast, _users.Values);
+
+                    if (_guesses.Count(x => x.Value.IsFinal) == _users.Count)
+                    {
+                        _roundOver.Set();
+                    }
                 }
             }
         }
 
-        private static double CalculateDistance(double lat1, double long1, double lat2, double long2)
+        private static int CalculateDistance(double lat1, double long1, double lat2, double long2)
         {
             const double earthRadius = 6371; // km
             const double radiansPerDegree = Math.PI / 180;
@@ -162,7 +197,8 @@ namespace CityGuessr.Server
                 Math.Cos(lat1 * radiansPerDegree) * Math.Cos(lat2 * radiansPerDegree) *
                 Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
             var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-            return earthRadius * c;
+
+            return (int)Math.Round(earthRadius * c);
         }
 
         private async Task RunGame()
@@ -181,26 +217,28 @@ namespace CityGuessr.Server
 
             Thread.Sleep(200);
 
-            const int roundLength = 120;
-
             for (var i = 0; i < 3; i++)
             {
+                _roundOver.Reset();
                 _currentLocation = _gameData[Random.Next(_gameData.Count)];
                 _guesses.Clear();
+                _stopwatch.Start();
 
                 await Send(new Message<RoundStart>()
                     {
                         Data = new RoundStart()
                         {
                             RoundNumber = i + 1,
-                            RoundLength = roundLength,
+                            RoundLength = RoundLength,
                             VideoId = _currentLocation.VideoId,
                             StartTime = _currentLocation.StartTime
                         }
                     },
                     _users.Values);
 
-                Thread.Sleep(roundLength * 1000);
+                _roundOver.Wait(TimeSpan.FromSeconds(RoundLength));
+                _stopwatch.Reset();
+
                 await Send(new Message<RoundEnd>()
                     {
                         Data = new RoundEnd()
@@ -210,6 +248,8 @@ namespace CityGuessr.Server
                         }
                     },
                     _users.Values);
+
+                _startNextRound.Wait(TimeSpan.FromSeconds(60));
             }
 
             lock (_lock)
@@ -241,6 +281,7 @@ namespace CityGuessr.Server
             {
                 VideoId = _currentLocation!.VideoId,
                 StartTime = _currentLocation!.StartTime,
+                RoundLength = RoundLength - _stopwatch.Elapsed.Seconds,
             };
 
             await Send(joinMsg, [user]);
@@ -260,7 +301,7 @@ namespace CityGuessr.Server
 
     public class User(WebSocket socket, string name, bool isHost)
     {
-        internal WebSocket Socket { get; init; } = socket;
+        internal WebSocket Socket { get; set; } = socket;
 
         public Guid Id { get; init; } = Guid.NewGuid();
 

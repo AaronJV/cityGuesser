@@ -2,9 +2,8 @@
 
 import { Component, ElementRef, OnInit, ViewChild } from "@angular/core";
 import { GameService, IRoundState, IUser } from "../game.service";
-import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import * as Leaflet from 'leaflet';
-import { fromEvent, debounceTime } from "rxjs";
+import { fromEvent, debounceTime, interval, take } from "rxjs";
 
 
 @Component({
@@ -15,13 +14,15 @@ import { fromEvent, debounceTime } from "rxjs";
 export class GameComponent implements OnInit {
   public roundData?: IRoundState;
   public currentUser?: IUser;
-  public videoUrl?: SafeResourceUrl;
   public map!: Leaflet.Map;
   @ViewChild('map') public mapElem?: ElementRef;
   private _player?: YT.Player;
   public playSpeed = 1;
   public marker?: Leaflet.Marker;
   private _resultMarker?: Leaflet.Marker;
+  private _resultLine?: Leaflet.Polyline;
+  public showSummary: boolean = false;
+  public remainingTime: number = 0;
 
 
   public showBigMap: boolean = false;
@@ -32,43 +33,72 @@ export class GameComponent implements OnInit {
 
   public ngOnInit() {
     this.game.roundState$.subscribe(s => {
-      if (typeof (s) === 'boolean') {
-        this.initMap();
-        return;
-      }
-      this.roundData = s;
-      if (this.roundData?.video !== s.video && this._resultMarker)
-      {
-        this._resultMarker.remove();
-        delete this._resultMarker;
-      }
       if (s.result)
       {
-        this._resultMarker = Leaflet.marker([s.result.targetLatitude, s.result.targetLongitude]);
+        this._resultMarker = new Leaflet.Marker([s.result.targetLatitude, s.result.targetLongitude], {
+          icon: new Leaflet.Icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+          })
+        });
         this._resultMarker.addTo(this.map);
 
-        Leaflet.polyline(
-          [this._resultMarker.getLatLng(), this.marker!.getLatLng()], {
-          weight: 10,
-          dashArray: '10, 10',
-          color: 'black'
-        }).addTo(this.map);
+        if (this.marker)
+        {
+          this.map.removeLayer(this.marker);
+          this.marker = new Leaflet.Marker(this.marker?.getLatLng(), {
+            icon: new Leaflet.Icon({
+              iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+              shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41],
+              popupAnchor: [1, -34],
+              shadowSize: [41, 41]
+            })
+          });
+          this.marker.addTo(this.map);
+          this._resultLine = new Leaflet.Polyline([this._resultMarker.getLatLng(), this.marker.getLatLng()], {
+            dashArray: '5'
+          }).addTo(this.map);
+        }
+        return;
       }
-      if (!s.isOver) {
-        if (!this.map) {
-          this.initMap();
-        }
-        if (!this._player) {
-          this.initYoutube(s.video, s.videoStart);
-        } else {
-          this._player.loadVideoById(s.video, s.videoStart);
-        }
 
-        this.map?.fitWorld();
+      this.initMap();
+
+      this.roundData = s;
+      interval(1000).pipe(take(s.length)).subscribe((x) => this.remainingTime = s.length - x);
+
+      if (!this._player) {
+        this.initYoutube(s.video, s.videoStart);
       } else {
-        this.videoUrl = undefined;
+        this._player.loadVideoById(s.video, s.videoStart);
+        this._player!.playVideo();
       }
     });
+    this.game.roundStart$.subscribe(s => {
+      this.initMap();
+
+      this.roundData = s;
+
+      this.remainingTime = 0;
+      interval(1000).pipe(take(s.length)).subscribe((x) => this.remainingTime = s.length - x);
+
+      if (!this._player) {
+        this.initYoutube(s.video, s.videoStart);
+      } else {
+        this._player.loadVideoById(s.video, s.videoStart);
+      }
+      this._player!.playVideo();
+    })
+    this.game.roundEnd$.subscribe(s => {
+      this._player?.pauseVideo();
+      this.showSummary = true;
+    })
     this.game.currentUser$.subscribe(u => this.currentUser = u);
   }
 
@@ -129,9 +159,29 @@ export class GameComponent implements OnInit {
     if (!this.mapElem) {
       return;
     }
+    if (this.map) {
+      this.map.fitWorld();
+      if (this.marker) {
+        this.map.removeLayer(this.marker);
+        delete this.marker;
+      }
+      if (this._resultMarker) {
+        this.map.removeLayer(this._resultMarker!);
+        delete this._resultMarker;
+      }
+      if (this._resultLine)
+      {
+        this.map.removeLayer(this._resultLine!);
+        delete this._resultLine;
+      }
+      return;
+    }
+
     this.map = Leaflet.map('map');
     this.map.fitWorld();
-    Leaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const google = "https://mt2.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=en"
+    const osm = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+    Leaflet.tileLayer(google, {
       maxZoom: 19,
       attribution: ''
     }).addTo(this.map);
@@ -150,7 +200,6 @@ export class GameComponent implements OnInit {
     });
     var resize = new ResizeObserver(() => {
       this.map.invalidateSize()
-      this.map.fitWorld();
     });
     resize.observe(this.mapElem?.nativeElement)
   }

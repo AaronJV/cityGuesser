@@ -39,6 +39,7 @@ namespace CityGuessr.Server
     {
         public string VideoId { get; set; }
         public int StartTime { get; set; }
+        public int RoundLength { get; set; }
     }
 
     public class GameStarting
@@ -92,6 +93,13 @@ namespace CityGuessr.Server
         public double Distance { get; set; }
         public double TargetLatitude { get; set; }
         public double TargetLongitude { get; set; }
+        public int Points { get; set; }
+    }
+
+    public class BroadcastResult
+    {
+        public User User { get; set; }
+        public double Distance { get; set; }
     }
 
 

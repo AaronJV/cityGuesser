@@ -1,0 +1,11 @@
+<div>
+  <svg [attr.height]="size" [attr.width]="size">
+    <circle stroke="#e0e0e0" [attr.cx]="size / 2" [attr.cy]="size / 2"
+            [attr.r]="radius + 5"
+            fill="#000000AA"/>
+    <circle [attr.stroke]="wedgeColour" [attr.cx]="size / 2" [attr.cy]="size / 2"
+            [attr.stroke-dasharray]="progCircumference" fill="transparent"
+            [attr.stroke-width]="radius" [attr.r]="radius / 2"/>
+  </svg>
+  <span>{{ progress }}</span>
+</div>
